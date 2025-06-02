@@ -8,7 +8,15 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 # --- Load model GLM & info ---
 def load_glm_model_info(path):
     model = sm.load(path)
-    return model, model.day_categories, model.product_categories, model.harga_median
+    try:
+        day_categories = model.model.data.frame['day'].cat.categories.tolist()
+        product_categories = model.model.data.frame['product_category'].cat.categories.tolist()
+        harga_median = model.model.data.frame['unit_price'].median()
+    except Exception:
+        day_categories = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        product_categories = ['kopi', 'non-kopi']
+        harga_median = 10000  # fallback default
+    return model, day_categories, product_categories, harga_median
 
 # --- Preprocessing data untuk GLM ---
 def preprocess_data_glm(file, day_categories, product_categories):
@@ -38,17 +46,11 @@ def predict_glm_qty(model, data):
 
 # --- Prediksi XGB ---
 def predict_xgb_qty(model, data, le_day, le_product):
-    # Filter hanya data yang nilai kategorinya dikenali encoder
     known_days = set(le_day.classes_)
     known_products = set(le_product.classes_)
-
     data = data[data['day'].isin(known_days) & data['product_category'].isin(known_products)]
-
-    # Encoding
     data['day_encoded'] = le_day.transform(data['day'])
     data['product_category_encoded'] = le_product.transform(data['product_category'])
-
-    # Fitur untuk model
     X = data[['day_encoded', 'product_category_encoded', 'unit_price']]
     data['predicted_qty_xgb'] = model.predict(X)
     return data
@@ -90,27 +92,20 @@ def eval_metrics(y_true, y_pred):
 # --- Plot perbandingan prediksi ---
 def plot_predictions(df_compare):
     fig, ax = plt.subplots(figsize=(12, 6))
-
     ax.plot(df_compare['transaction_qty'].values, label='Aktual', color='dodgerblue', linewidth=2)
     ax.plot(df_compare['predicted_qty_glm'].values, label='Prediksi GLM', color='orange', linewidth=1.5)
     ax.plot(df_compare['predicted_qty_xgb'].values, label='Prediksi XGBoost', color='limegreen', linewidth=1.5)
-
     ax.set_title('Perbandingan Prediksi vs Aktual', fontsize=16)
     ax.set_xlabel('Index', fontsize=12)
     ax.set_ylabel('Jumlah Transaksi', fontsize=12)
     ax.legend()
     ax.grid(True, linestyle='--', alpha=0.5)
-
     st.pyplot(fig)
 
+# --- Mapping hari ---
 day_mapping_id = {
-    'Monday': 'Senin',
-    'Tuesday': 'Selasa',
-    'Wednesday': 'Rabu',
-    'Thursday': 'Kamis',
-    'Friday': 'Jumat',
-    'Saturday': 'Sabtu',
-    'Sunday': 'Minggu'
+    'Monday': 'Senin', 'Tuesday': 'Selasa', 'Wednesday': 'Rabu', 'Thursday': 'Kamis',
+    'Friday': 'Jumat', 'Saturday': 'Sabtu', 'Sunday': 'Minggu'
 }
 day_mapping_en = {v: k for k, v in day_mapping_id.items()}
 
@@ -122,84 +117,48 @@ uploaded_file = st.file_uploader("Unggah file data (.xlsx) untuk prediksi", type
 if uploaded_file is not None:
     glm_model, day_cats, prod_cats, harga_median = load_glm_model_info("model_glm_hale.sm")
     xgb_model, le_day, le_product = load_xgb_model("model_xgb_hale.pkl")
-    
+
     data = preprocess_data_glm(uploaded_file, day_cats, prod_cats)
     data = predict_glm_qty(glm_model, data)
     data = predict_xgb_qty(xgb_model, data, le_day, le_product)
     data = apply_diskon(data, col_predicted='predicted_qty_glm')
-    
-    st.subheader("📊 Data Hasil Prediksi (10 Data Pertama)")
+
+    st.subheader("\U0001F4CA Data Hasil Prediksi (10 Data Pertama)")
     st.dataframe(
         data[['transaction_date', 'day', 'product_category', 'unit_price',
-            'predicted_qty_glm', 'predicted_qty_xgb', 'diskon', 'harga_setelah_diskon']]
-        .sort_values(by='predicted_qty_glm', ascending=True)  # urut dari nilai terkecil
+              'predicted_qty_glm', 'predicted_qty_xgb', 'diskon', 'harga_setelah_diskon']]
+        .sort_values(by='predicted_qty_glm', ascending=True)
         .head(10),
         use_container_width=True
     )
-    
-    if st.checkbox("🔍 Tampilkan produk dengan prediksi penjualan berdasarkan hari"):
+
+    if st.checkbox("\U0001F50D Tampilkan produk dengan prediksi penjualan berdasarkan hari"):
         hari_id_dipilih = st.selectbox("Pilih Hari", list(day_mapping_id.values()))
         hari_en = day_mapping_en[hari_id_dipilih]
         hasil = tampilkan_prediksi_terendah_untuk_hari(data, hari_en)
         hasil_xgb = tampilkan_prediksi_terendah_untuk_hari_xgb(data, hari_en)
-        hasil_tertinggi_xgb = data[data['day'] == hari_en].sort_values(by='predicted_qty_xgb', ascending=False)
         hasil_tertinggi = data[data['day'] == hari_en].sort_values(by='predicted_qty_glm', ascending=False)
-        if hasil is None or hasil.empty:
-            st.warning(f"Tidak ada data untuk hari {hari_id_dipilih}.")
-        else:
+        hasil_tertinggi_xgb = data[data['day'] == hari_en].sort_values(by='predicted_qty_xgb', ascending=False)
+
+        if hasil is not None and not hasil.empty:
             hasil = hasil.iloc[0]
-            hasil_tertinggi = hasil_tertinggi.iloc[0]  # hanya satu hasil
-            st.markdown(f"""
-            <div style="background-color: #fff3cd; padding: 15px; border-left: 6px solid #ffc107; border-radius: 5px;">
-            <h4 style="color: #000000; margin-bottom: 10px;">📅 Prediksi Penjualan Terendah Hari {hari_id_dipilih}</h4>
-            <p style="color: #000000;">
-                <strong>Produk:</strong> {hasil['product_category']}<br>
-                <strong>Hari:</strong> {hari_id_dipilih}<br>
-                <strong>Diskon:</strong> {hasil['diskon']*100:.0f}%<br>
-                <strong>Harga Setelah Diskon:</strong> Rp {int(hasil['harga_setelah_diskon']):,}
-            </p>
-            </div>
-            <br><br>
-            """, unsafe_allow_html=True)
-            
-            st.markdown(f"""
-                <div style="background-color: #d1ecf1; padding: 15px; border-left: 6px solid #17a2b8; border-radius: 5px;">
-                <h4 style="color: #000000; margin-bottom: 10px;">📅 Prediksi Penjualan Tertinggi Hari {hari_id_dipilih}</h4>
-                <p style="color: #000000;">
-                    <strong>Produk:</strong> {hasil_tertinggi['product_category']}<br>
-                    <strong>Hari:</strong> {hari_id_dipilih}<br>
-                    <strong>Diskon:</strong> {hasil_tertinggi['diskon']*100:.0f}%<br>
-                    <strong>Harga Setelah Diskon:</strong> Rp {int(hasil_tertinggi['harga_setelah_diskon']):,}
-                </p>
-                </div>
-                """, unsafe_allow_html=True)
-            st.markdown(f"""
-                <div style="background-color: #fff3cd; padding: 15px; border-left: 6px solid #ffc107; border-radius: 5px;">
-                <h4 style="color: #000000; margin-bottom: 10px;">📅 Prediksi Penjualan Terendah Hari {hari_id_dipilih}</h4>
-                <p style="color: #000000;">
-                    <strong>Produk:</strong> {hasil_xgb['product_category']}<br>
-                    <strong>Hari:</strong> {hari_id_dipilih}<br>
-                    <strong>Diskon:</strong> {hasil_xgb['diskon']*100:.0f}%<br>
-                    <strong>Harga Setelah Diskon:</strong> Rp {int(hasil_xgb['harga_setelah_diskon']):,}
-                </p>
-                </div>
-                <br><br>
-                """, unsafe_allow_html=True)
-            st.markdown(f"""
-                <div style="background-color: #d1ecf1; padding: 15px; border-left: 6px solid #17a2b8; border-radius: 5px;">
-                <h4 style="color: #000000; margin-bottom: 10px;">📅 Prediksi Penjualan Tertinggi Hari {hari_id_dipilih}</h4>
-                <p style="color: #000000;">
-                    <strong>Produk:</strong> {hasil_tertinggi_xgb['product_category']}<br>
-                    <strong>Hari:</strong> {hari_id_dipilih}<br>
-                    <strong>Diskon:</strong> {hasil_tertinggi_xgb['diskon']*100:.0f}%<br>
-                    <strong>Harga Setelah Diskon:</strong> Rp {int(hasil_tertinggi_xgb['harga_setelah_diskon']):,}
-                </p>
-                </div>
-                """, unsafe_allow_html=True)
-    
+            hasil_tertinggi = hasil_tertinggi.iloc[0]
+            st.markdown(f"**GLM: {hasil['product_category']} (Diskon: {hasil['diskon']*100:.0f}%) - Rp {int(hasil['harga_setelah_diskon']):,}**")
+            st.markdown(f"**GLM (Tertinggi): {hasil_tertinggi['product_category']} - Rp {int(hasil_tertinggi['harga_setelah_diskon']):,}**")
+        else:
+            st.warning(f"Tidak ada data GLM untuk hari {hari_id_dipilih}.")
+
+        if hasil_xgb is not None and not hasil_xgb.empty:
+            hasil_xgb = hasil_xgb.iloc[0]
+            hasil_tertinggi_xgb = hasil_tertinggi_xgb.iloc[0]
+            st.markdown(f"**XGB: {hasil_xgb['product_category']} (Diskon: {hasil_xgb['diskon']*100:.0f}%) - Rp {int(hasil_xgb['harga_setelah_diskon']):,}**")
+            st.markdown(f"**XGB (Tertinggi): {hasil_tertinggi_xgb['product_category']} - Rp {int(hasil_tertinggi_xgb['harga_setelah_diskon']):,}**")
+        else:
+            st.warning(f"Tidak ada data XGBoost untuk hari {hari_id_dipilih}.")
+
     mse_glm, rmse_glm, mae_glm, r2_glm = eval_metrics(data['transaction_qty'], data['predicted_qty_glm'])
     mse_xgb, rmse_xgb, mae_xgb, r2_xgb = eval_metrics(data['transaction_qty'], data['predicted_qty_xgb'])
-    
+
     eval_df = pd.DataFrame({
         'Model': ['GLM Poisson', 'XGBoost'],
         'MSE': [mse_glm, mse_xgb],
@@ -207,17 +166,12 @@ if uploaded_file is not None:
         'MAE': [mae_glm, mae_xgb],
         'R2': [r2_glm, r2_xgb]
     })
-    
-    st.subheader("📈 Evaluasi Perbandingan Model")
+
+    st.subheader("\U0001F4C8 Evaluasi Perbandingan Model")
     st.table(eval_df)
-    
+
     csv_eval = eval_df.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="Download Evaluasi CSV",
-        data=csv_eval,
-        file_name='evaluasi_perbandingan_model.csv',
-        mime='text/csv',
-    )
-    
-    st.subheader("📉 Grafik Perbandingan Prediksi vs Actual")
+    st.download_button("Download Evaluasi CSV", data=csv_eval, file_name='evaluasi_perbandingan_model.csv', mime='text/csv')
+
+    st.subheader("\U0001F4C9 Grafik Perbandingan Prediksi vs Actual")
     plot_predictions(data)
