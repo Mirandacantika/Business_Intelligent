@@ -150,7 +150,7 @@ if uploaded_file is not None:
                 Diskon: {hasil['diskon']*100:.0f}%<br>
                 Harga Setelah Diskon: Rp {int(hasil['harga_setelah_diskon']):,}
             </div><br>
-            <div style='background-color:#d1ecf1;padding:15px;border-left:6px solid #17a2b8;border-radius:5px;'>
+            <div style='background-color:#d1ecf1;padding:15px;margin:15px;border-left:6px solid #17a2b8;border-radius:5px;'>
                 <h4>GLM - Penjualan Tertinggi</h4>
                 Produk: <strong>{hasil_tertinggi['product_category']}</strong><br>
                 Diskon: {hasil_tertinggi['diskon']*100:.0f}%<br>
