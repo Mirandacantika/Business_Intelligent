@@ -57,7 +57,7 @@ def predict_xgb_qty(model, data, le_day, le_product):
 
 # --- Fungsi hitung diskon ---
 def hitung_diskon(pred_qty):
-    threshold = 2
+    threshold = 1.5
     diskon_maks = 0.2  # maksimal 20%
     if pred_qty < threshold:
         diskon = (1 - pred_qty / threshold) * diskon_maks
