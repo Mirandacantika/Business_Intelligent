@@ -68,6 +68,12 @@ def tampilkan_prediksi_terendah_untuk_hari(data, hari, jumlah_item=1):
         return None
     return data_hari.sort_values(by='predicted_qty_glm').head(jumlah_item)
 
+def tampilkan_prediksi_terendah_untuk_hari_xgb(data, hari, jumlah_item=1):
+    data_hari = data[data['day'] == hari]
+    if data_hari.empty:
+        return None
+    return data_hari.sort_values(by='predicted_qty_xgb').head(jumlah_item)
+
 def apply_diskon(data, col_predicted='predicted_qty_glm'):
     data['diskon'] = data[col_predicted].apply(hitung_diskon)
     data['harga_setelah_diskon'] = data['unit_price'] * (1 - data['diskon'])
@@ -135,6 +141,8 @@ if uploaded_file is not None:
         hari_id_dipilih = st.selectbox("Pilih Hari", list(day_mapping_id.values()))
         hari_en = day_mapping_en[hari_id_dipilih]
         hasil = tampilkan_prediksi_terendah_untuk_hari(data, hari_en)
+        hasil_xgb = tampilkan_prediksi_terendah_untuk_hari_xgb(data, hari_en)
+        hasil_tertinggi_xgb = data[data['day'] == hari_en].sort_values(by='predicted_qty_xgb', ascending=False)
         hasil_tertinggi = data[data['day'] == hari_en].sort_values(by='predicted_qty_glm', ascending=False)
         if hasil is None or hasil.empty:
             st.warning(f"Tidak ada data untuk hari {hari_id_dipilih}.")
@@ -165,7 +173,29 @@ if uploaded_file is not None:
                 </p>
                 </div>
                 """, unsafe_allow_html=True)
-
+            st.markdown(f"""
+                <div style="background-color: #fff3cd; padding: 15px; border-left: 6px solid #ffc107; border-radius: 5px;">
+                <h4 style="color: #000000; margin-bottom: 10px;">📅 Prediksi Penjualan Terendah Hari {hari_id_dipilih}</h4>
+                <p style="color: #000000;">
+                    <strong>Produk:</strong> {hasil_xgb['product_category']}<br>
+                    <strong>Hari:</strong> {hari_id_dipilih}<br>
+                    <strong>Diskon:</strong> {hasil_xgb['diskon']*100:.0f}%<br>
+                    <strong>Harga Setelah Diskon:</strong> Rp {int(hasil_xgb['harga_setelah_diskon']):,}
+                </p>
+                </div>
+                <br><br>
+                """, unsafe_allow_html=True)
+            st.markdown(f"""
+                <div style="background-color: #d1ecf1; padding: 15px; border-left: 6px solid #17a2b8; border-radius: 5px;">
+                <h4 style="color: #000000; margin-bottom: 10px;">📅 Prediksi Penjualan Tertinggi Hari {hari_id_dipilih}</h4>
+                <p style="color: #000000;">
+                    <strong>Produk:</strong> {hasil_tertinggi_xgb['product_category']}<br>
+                    <strong>Hari:</strong> {hari_id_dipilih}<br>
+                    <strong>Diskon:</strong> {hasil_tertinggi_xgb['diskon']*100:.0f}%<br>
+                    <strong>Harga Setelah Diskon:</strong> Rp {int(hasil_tertinggi_xgb['harga_setelah_diskon']):,}
+                </p>
+                </div>
+                """, unsafe_allow_html=True)
     
     mse_glm, rmse_glm, mae_glm, r2_glm = eval_metrics(data['transaction_qty'], data['predicted_qty_glm'])
     mse_xgb, rmse_xgb, mae_xgb, r2_xgb = eval_metrics(data['transaction_qty'], data['predicted_qty_xgb'])
