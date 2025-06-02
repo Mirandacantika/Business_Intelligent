@@ -143,16 +143,38 @@ if uploaded_file is not None:
         if hasil is not None and not hasil.empty:
             hasil = hasil.iloc[0]
             hasil_tertinggi = hasil_tertinggi.iloc[0]
-            st.markdown(f"**GLM: {hasil['product_category']} (Diskon: {hasil['diskon']*100:.0f}%) - Rp {int(hasil['harga_setelah_diskon']):,}**")
-            st.markdown(f"**GLM (Tertinggi): {hasil_tertinggi['product_category']} - Rp {int(hasil_tertinggi['harga_setelah_diskon']):,}**")
+            st.markdown(f"""
+            <div style='background-color:#fff3cd;padding:15px;border-left:6px solid #ffc107;border-radius:5px;'>
+                <h4>GLM - Penjualan Terendah</h4>
+                Produk: <strong>{hasil['product_category']}</strong><br>
+                Diskon: {hasil['diskon']*100:.0f}%<br>
+                Harga Setelah Diskon: Rp {int(hasil['harga_setelah_diskon']):,}
+            </div><br>
+            <div style='background-color:#d1ecf1;padding:15px;border-left:6px solid #17a2b8;border-radius:5px;'>
+                <h4>GLM - Penjualan Tertinggi</h4>
+                Produk: <strong>{hasil_tertinggi['product_category']}</strong><br>
+                Harga Setelah Diskon: Rp {int(hasil_tertinggi['harga_setelah_diskon']):,}
+            </div>
+            """, unsafe_allow_html=True)
         else:
             st.warning(f"Tidak ada data GLM untuk hari {hari_id_dipilih}.")
 
         if hasil_xgb is not None and not hasil_xgb.empty:
             hasil_xgb = hasil_xgb.iloc[0]
             hasil_tertinggi_xgb = hasil_tertinggi_xgb.iloc[0]
-            st.markdown(f"**XGB: {hasil_xgb['product_category']} (Diskon: {hasil_xgb['diskon']*100:.0f}%) - Rp {int(hasil_xgb['harga_setelah_diskon']):,}**")
-            st.markdown(f"**XGB (Tertinggi): {hasil_tertinggi_xgb['product_category']} - Rp {int(hasil_tertinggi_xgb['harga_setelah_diskon']):,}**")
+            st.markdown(f"""
+            <div style='background-color:#fff3cd;padding:15px;border-left:6px solid #ffc107;border-radius:5px;'>
+                <h4>XGBoost - Penjualan Terendah</h4>
+                Produk: <strong>{hasil_xgb['product_category']}</strong><br>
+                Diskon: {hasil_xgb['diskon']*100:.0f}%<br>
+                Harga Setelah Diskon: Rp {int(hasil_xgb['harga_setelah_diskon']):,}
+            </div><br>
+            <div style='background-color:#d1ecf1;padding:15px;border-left:6px solid #17a2b8;border-radius:5px;'>
+                <h4>XGBoost - Penjualan Tertinggi</h4>
+                Produk: <strong>{hasil_tertinggi_xgb['product_category']}</strong><br>
+                Harga Setelah Diskon: Rp {int(hasil_tertinggi_xgb['harga_setelah_diskon']):,}
+            </div>
+            """, unsafe_allow_html=True)
         else:
             st.warning(f"Tidak ada data XGBoost untuk hari {hari_id_dipilih}.")
 
