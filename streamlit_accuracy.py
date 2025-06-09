@@ -143,21 +143,22 @@ if uploaded_file:
             rendah, tinggi = tampilkan_prediksi_untuk_hari(data, hari_en, model_col)
             if rendah is not None:
                 st.markdown(f"""
-                <div style='background-color:{color_low};padding:15px;border-left:6px solid #ffc107;border-radius:5px;'>
+                <div style='background-color:{color_low};padding:15px;margin-bottom:10px;
+                            border-left:6px solid #ffc107;border-radius:5px;color:#000;'>
                     <h4>{model_label} - Penjualan Terendah</h4>
                     Produk: <strong>{rendah['product_category']}</strong><br>
-                    Rekomendasi Diskon: {rendah['diskon']*100:.0f}%<br>
+                    Rekomendasi Diskon: {rendah['diskon']*100:.0f}%
                 </div>
-                <br>
-                <div style='background-color:{color_high};padding:15px;border-left:6px solid #17a2b8;border-radius:5px;'>
+                <div style='background-color:{color_high};padding:15px;margin-bottom:30px;
+                            border-left:6px solid #17a2b8;border-radius:5px;color:#000;'>
                     <h4>{model_label} - Penjualan Tertinggi</h4>
                     Produk: <strong>{tinggi['product_category']}</strong><br>
-                    Rekomendasi Diskon: {tinggi['diskon']*100:.0f}%<br>
+                    Rekomendasi Diskon: {tinggi['diskon']*100:.0f}%
                 </div>
                 """, unsafe_allow_html=True)
             else:
                 st.warning(f"Tidak ada data {model_label} untuk hari {hari_id}.")
-
+                
     mse_glm, rmse_glm, mae_glm, r2_glm = eval_metrics(data['transaction_qty'], data['predicted_qty_glm'])
     mse_xgb, rmse_xgb, mae_xgb, r2_xgb = eval_metrics(data['transaction_qty'], data['predicted_qty_xgb'])
 
