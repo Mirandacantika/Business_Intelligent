@@ -5,117 +5,211 @@ import joblib
 import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
-# =========================
-# Load Models & Encoders
-# =========================
-def load_glm_model_info(path):
+# Constants
+DEFAULT_DAY_CATEGORIES = [
+    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'
+]
+DEFAULT_PRODUCT_CATEGORIES = ['kopi', 'non-kopi']
+DEFAULT_MEDIAN_PRICE = 10_000
+DISCOUNT_THRESHOLD = 1.5  # Predicted quantity threshold
+dISCOUNT_MAX = 0.2        # Maximum discount (20%)
+
+# Mappings
+DAY_ID_TO_EN = {
+    'Senin': 'Monday', 'Selasa': 'Tuesday', 'Rabu': 'Wednesday',
+    'Kamis': 'Thursday', 'Jumat': 'Friday', 'Sabtu': 'Saturday', 'Minggu': 'Sunday'
+}
+DAY_EN_TO_ID = {v: k for k, v in DAY_ID_TO_EN.items()}
+
+
+def load_glm_model_info(path: str):
+    """
+    Load a GLM model and extract category & median price info from its training data.
+    Falls back to default categories and median price if metadata unavailable.
+    """
     model = sm.load(path)
     try:
         df = model.model.data.frame
-        day_categories = df['day'].cat.categories.tolist()
-        product_categories = df['product_category'].cat.categories.tolist()
-        harga_median = df['unit_price'].median()
+        day_cats = df['day'].cat.categories.tolist()
+        prod_cats = df['product_category'].cat.categories.tolist()
+        median_price = df['unit_price'].median()
     except Exception:
-        day_categories = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-        product_categories = ['kopi', 'non-kopi']
-        harga_median = 10000
-    return model, day_categories, product_categories, harga_median
+        day_cats, prod_cats, median_price = (
+            DEFAULT_DAY_CATEGORIES,
+            DEFAULT_PRODUCT_CATEGORIES,
+            DEFAULT_MEDIAN_PRICE
+        )
+    return model, day_cats, prod_cats, median_price
 
-def load_xgb_model(path):
+
+def load_xgb_model(path: str):
+    """
+    Load an XGBoost model bundled with its label encoders.
+    """
     bundle = joblib.load(path)
     return bundle['model'], bundle['le_day'], bundle['le_product']
 
-# =========================
-# Preprocessing
-# =========================
-def preprocess_data(file, day_categories, product_categories):
-    if file.name.endswith('.csv'):
-        data = pd.read_csv(file)
-    elif file.name.endswith('.xlsx'):
-        data = pd.read_excel(file)
+
+def preprocess_data(file, day_cats: list, prod_cats: list) -> pd.DataFrame:
+    """
+    Read uploaded CSV/XLSX, parse dates, and set categorical columns.
+    """
+    if file.name.lower().endswith('.csv'):
+        df = pd.read_csv(file)
     else:
-        raise ValueError("Hanya mendukung file .csv dan .xlsx")
+        df = pd.read_excel(file)
 
-    data['transaction_date'] = pd.to_datetime(data['transaction_date'])
-    data['day'] = pd.Categorical(data['transaction_date'].dt.day_name(), categories=day_categories)
-    data['product_category'] = pd.Categorical(data['product_category'], categories=product_categories)
-    return data
+    df['transaction_date'] = pd.to_datetime(df['transaction_date'])
+    df['day'] = pd.Categorical(
+        df['transaction_date'].dt.day_name(),
+        categories=day_cats,
+        ordered=True
+    )
+    df['product_category'] = pd.Categorical(
+        df['product_category'],
+        categories=prod_cats,
+        ordered=True
+    )
+    return df
 
-# =========================
-# Prediction Functions
-# =========================
-def predict_glm(model, data):
-    data['predicted_qty_glm'] = model.predict(data)
-    return data
 
-def predict_xgb(model, data, le_day, le_product):
-    data = data[data['day'].isin(le_day.classes_) & data['product_category'].isin(le_product.classes_)]
-    data['day_encoded'] = le_day.transform(data['day'])
-    data['product_category_encoded'] = le_product.transform(data['product_category'])
-    features = data[['day_encoded', 'product_category_encoded', 'unit_price']]
-    data['predicted_qty_xgb'] = model.predict(features)
-    return data
+def predict_glm(model, df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df['predicted_qty_glm'] = model.predict(df)
+    return df
 
-# =========================
-# Diskon & Output
-# =========================
-def hitung_diskon(qty, threshold=1.5, max_diskon=0.2):
-    if qty < threshold:
-        diskon = (1 - qty / threshold) * max_diskon
-        return round(min(diskon, max_diskon), 2)
+
+def predict_xgb(model, df: pd.DataFrame, le_day, le_prod) -> pd.DataFrame:
+    df = df.copy()
+    # Filter unknown categories
+    df = df[df['day'].isin(le_day.classes_) & df['product_category'].isin(le_prod.classes_)]
+    df['day_encoded'] = le_day.transform(df['day'])
+    df['product_encoded'] = le_prod.transform(df['product_category'])
+    features = df[['day_encoded', 'product_encoded', 'unit_price']]
+    df['predicted_qty_xgb'] = model.predict(features)
+    return df
+
+
+def calculate_discount(pred_qty: float) -> float:
+    """Return discount rate based on predicted quantity."""
+    if pred_qty < DISCOUNT_THRESHOLD:
+        discount = (1 - pred_qty / DISCOUNT_THRESHOLD) * dISCOUNT_MAX
+        return round(min(discount, dISCOUNT_MAX), 2)
     return 0.0
 
-def apply_diskon(data, pred_col='predicted_qty_glm'):
-    data['diskon'] = data[pred_col].apply(hitung_diskon)
-    data['harga_setelah_diskon'] = data['unit_price'] * (1 - data['diskon'])
-    return data
 
-# =========================
-# Evaluation & Visualization
-# =========================
-def eval_metrics(y_true, y_pred):
+def apply_discounts(df: pd.DataFrame, pred_col: str = 'predicted_qty_glm') -> pd.DataFrame:
+    df = df.copy()
+    df['discount_rate'] = df[pred_col].apply(calculate_discount)
+    df['price_after_discount'] = df['unit_price'] * (1 - df['discount_rate'])
+    return df
+
+
+def compute_metrics(y_true, y_pred):
     mse = mean_squared_error(y_true, y_pred)
-    return mse, mse**0.5, mean_absolute_error(y_true, y_pred), r2_score(y_true, y_pred)
+    rmse = mse ** 0.5
+    mae = mean_absolute_error(y_true, y_pred)
+    r2 = r2_score(y_true, y_pred)
+    return mse, rmse, mae, r2
 
-def plot_predictions(data):
+
+def plot_comparison(df: pd.DataFrame):
     fig, ax = plt.subplots(figsize=(12, 6))
-    ax.plot(data['transaction_qty'], label='Aktual', linewidth=2)
-    ax.plot(data['predicted_qty_glm'], label='GLM', linewidth=1.5)
-    ax.plot(data['predicted_qty_xgb'], label='XGBoost', linewidth=1.5)
-    ax.set(title='Prediksi vs Aktual', xlabel='Index', ylabel='Jumlah Transaksi')
+    ax.plot(df['transaction_qty'], label='Aktual', linewidth=2)
+    ax.plot(df['predicted_qty_glm'], label='GLM', linewidth=1.5)
+    ax.plot(df['predicted_qty_xgb'], label='XGBoost', linewidth=1.5)
+    ax.set(
+        title='Prediksi vs Aktual',
+        xlabel='Index',
+        ylabel='Jumlah Transaksi'
+    )
     ax.legend()
-    ax.grid(True, linestyle='--', alpha=0.5)
+    ax.grid(linestyle='--', alpha=0.5)
     st.pyplot(fig)
 
-# =========================
-# Helper: Hari & Tampilan
-# =========================
-def tampilkan_extreme_prediksi(data, hari, model_col='predicted_qty_glm'):
-    data_hari = data[data['day'] == hari]
-    if data_hari.empty:
-        return None, None
-    return (
-        data_hari.sort_values(by=model_col).iloc[0],
-        data_hari.sort_values(by=model_col, ascending=False).iloc[0]
+
+def display_summary(df: pd.DataFrame, day: str, model_key: str):
+    """Render a summary card for lowest/highest predicted items on a given day."""
+    subset = df[df['day'] == day]
+    if subset.empty:
+        st.warning(f"Tidak ada data untuk {model_key} di hari {DAY_EN_TO_ID[day]}")
+        return
+
+    lowest = subset.nsmallest(1, f'predicted_qty_{model_key}')
+    highest = subset.nlargest(1, f'predicted_qty_{model_key}')
+
+    for label, row in [('Terendah', lowest.iloc[0]), ('Tertinggi', highest.iloc[0])]:
+        color = '#fff3cd' if label == 'Terendah' else '#d1ecf1'
+        border = '#ffc107' if label == 'Terendah' else '#17a2b8'
+        with st.container():
+            st.markdown(f"""
+            <div style='background-color:{color};padding:15px;border-left:6px solid {border};border-radius:5px;'>
+                <h4>{model_key.upper()} - Penjualan {label}</h4>
+                Produk: <strong>{row['product_category']}</strong><br>
+                Diskon: {row['discount_rate']*100:.0f}%<br>
+                Harga Setelah Diskon: Rp {int(row['price_after_discount']):,}
+            </div>
+            """, unsafe_allow_html=True)
+
+
+def main():
+    st.title("Prediksi Transaksi & Evaluasi Model")
+    uploaded = st.file_uploader("Unggah .csv atau .xlsx", type=['csv', 'xlsx'])
+
+    if not uploaded:
+        st.info("Silakan unggah file data untuk memulai.")
+        return
+
+    # Load models
+    glm_model, day_cats, prod_cats, _ = load_glm_model_info("model_glm_hale.sm")
+    xgb_model, le_day, le_prod = load_xgb_model("model_xgb_hale.pkl")
+
+    # Prepare data
+    df = preprocess_data(uploaded, day_cats, prod_cats)
+    df = predict_glm(glm_model, df)
+    df = predict_xgb(xgb_model, df, le_day, le_prod)
+    df = apply_discounts(df)
+
+    # Preview
+    st.subheader("Data Prediksi (Top 10 Terendah GLM)")
+    st.dataframe(
+        df.sort_values('predicted_qty_glm').head(10),
+        use_container_width=True
     )
 
-day_mapping_id = {
-    'Monday': 'Senin', 'Tuesday': 'Selasa', 'Wednesday': 'Rabu', 'Thursday': 'Kamis',
-    'Friday': 'Jumat', 'Saturday': 'Sabtu', 'Sunday': 'Minggu'
-}
-day_mapping_en = {v: k for k, v in day_mapping_id.items()}
+    # Day-specific view
+    if st.checkbox("Tampilkan per hari"):  # 🔍
+        day_id = st.selectbox("Pilih Hari", list(DAY_ID_TO_EN.keys()))
+        day_en = DAY_ID_TO_EN[day_id]
+        st.write(f"### Hari: {day_id}")
+        display_summary(df, day_en, 'glm')
+        display_summary(df, day_en, 'xgb')
 
-# =========================
-# Streamlit App
-# =========================
-st.title("Prediksi Transaksi & Evaluasi Model (GLM vs XGBoost)")
+    # Metrics table
+    mse_g, rmse_g, mae_g, r2_g = compute_metrics(df['transaction_qty'], df['predicted_qty_glm'])
+    mse_x, rmse_x, mae_x, r2_x = compute_metrics(df['transaction_qty'], df['predicted_qty_xgb'])
 
-uploaded_file = st.file_uploader("Unggah data transaksi (.csv atau .xlsx)", type=["csv", "xlsx"])
+    metrics_df = pd.DataFrame(
+        [
+            ('GLM Poisson', mse_g, rmse_g, mae_g, r2_g),
+            ('XGBoost', mse_x, rmse_x, mae_x, r2_x)
+        ],
+        columns=['Model', 'MSE', 'RMSE', 'MAE', 'R2']
+    )
 
-if uploaded_file:
-    glm_model, day_cats, prod_cats, harga_median = load_glm_model_info("model_glm_hale.sm")
-    xgb_model, le_day, le_product = load_xgb_model("model_xgb_hale.pkl")
+    st.subheader("Evaluasi Model")
+    st.table(metrics_df)
+    st.download_button(
+        label="Download Evaluasi CSV",
+        data=metrics_df.to_csv(index=False).encode('utf-8'),
+        file_name='evaluasi_model.csv',
+        mime='text/csv'
+    )
 
-    data = preprocess_data(uploaded_file, day_cats, prod_cats)
-    data = predict_glm(glm_model, data)
-    data = predict_xgb(xgb_model, data
+    # Plot
+    st.subheader("Grafik Prediksi vs Aktual")
+    plot_comparison(df)
+
+
+if __name__ == '__main__':
+    main()
