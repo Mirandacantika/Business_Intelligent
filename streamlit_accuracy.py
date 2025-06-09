@@ -170,7 +170,8 @@ if uploaded_file:
         'R2': [r2_glm, r2_xgb]
     })
 
-    st.subheader("\U0001F4C8 Evaluasi Model")
+    st.subheader("Evaluasi Model")
+    eval_df.index = [1, 2]
     st.dataframe(eval_df, use_container_width=True)
     st.download_button("Download Evaluasi sebagai CSV", data=eval_df.to_csv(index=False), file_name='evaluasi_model.csv', mime='text/csv')
 
