@@ -104,7 +104,7 @@ def plot_predictions(df_compare):
 # --- Mapping hari ---
 day_mapping_id = {
     'Monday': 'Senin', 'Tuesday': 'Selasa', 'Wednesday': 'Rabu', 'Thursday': 'Kamis',
-    'Friday': 'Jumat', 'Saturday': 'Sabtu', 'Sunday': 'Minggu'
+    'Friday': 'Jumat''
 }
 day_mapping_en = {v: k for k, v in day_mapping_id.items()}
 
