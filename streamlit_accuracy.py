@@ -153,8 +153,7 @@ if uploaded_file:
                 <div style='background-color:{color_high};padding:15px;border-left:6px solid #17a2b8;border-radius:5px;'>
                     <h4>{model_label} - Penjualan Tertinggi</h4>
                     Produk: <strong>{tinggi['product_category']}</strong><br>
-                    Diskon: {tinggi['diskon']*100:.0f}%<br>
-                    Harga Setelah Diskon: Rp {int(tinggi['harga_setelah_diskon']):,}
+                    Rekomendasi Diskon: {tinggi['diskon']*100:.0f}%<br>:,}
                 </div>
                 """, unsafe_allow_html=True)
             else:
