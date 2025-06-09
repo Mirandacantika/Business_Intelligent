@@ -147,7 +147,6 @@ if uploaded_file:
                     <h4>{model_label} - Penjualan Terendah</h4>
                     Produk: <strong>{rendah['product_category']}</strong><br>
                     Diskon: {rendah['diskon']*100:.0f}%<br>
-                    Harga Setelah Diskon: Rp {int(rendah['harga_setelah_diskon']):,}
                 </div>
                 <br>
                 <div style='background-color:{color_high};padding:15px;border-left:6px solid #17a2b8;border-radius:5px;'>
